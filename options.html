@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <title>구독 가리개 설정</title>
+  <link rel="stylesheet" href="options.css">
+</head>
+<body>
+  <main>
+    <header class="top">
+      <div>
+        <h1>구독 가리개</h1>
+        <p class="sub">구독은 그대로 두고, 끈 채널의 영상을 유튜브 화면에서 숨깁니다.</p>
+      </div>
+      <button id="refresh" class="btn">구독 목록 새로고침</button>
+    </header>
+
+    <div id="status" class="status" hidden></div>
+
+    <section class="card">
+      <div class="section-head">
+        <h2>구독 채널</h2>
+        <span id="count" class="muted"></span>
+      </div>
+      <div class="toolbar">
+        <input id="search" type="search" placeholder="채널 검색" autocomplete="off">
+        <button id="blockAll" class="btn danger">전체 차단</button>
+        <button id="unblockAll" class="btn">전체 해제</button>
+      </div>
+      <ul id="list" class="list"></ul>
+      <p id="empty" class="empty" hidden>구독 채널이 없습니다. 유튜브에 로그인한 뒤 “구독 목록 새로고침”을 눌러 주세요.</p>
+    </section>
+
+    <section class="card">
+      <div class="section-head">
+        <h2>키워드 차단</h2>
+        <span class="muted">제목·채널명에 포함되면 구독하지 않은 영상도 숨깁니다</span>
+      </div>
+      <form id="kwForm" class="toolbar">
+        <input id="kwInput" type="text" placeholder="예: ASMR" autocomplete="off">
+        <button class="btn primary" type="submit">추가</button>
+      </form>
+      <div id="kwList" class="chips"></div>
+    </section>
+
+    <section class="card">
+      <div class="section-head"><h2>개인정보</h2></div>
+      <label class="row-setting">
+        <span>
+          <strong>크롬을 닫으면 자동 삭제</strong>
+          <span class="muted block">켜 두면 목록이 메모리에만 저장되어, 크롬을 완전히 닫는 순간 사라집니다. 외부 PC에서는 켜 두는 것을 권장합니다.</span>
+        </span>
+        <input id="autoClear" type="checkbox" class="switch">
+      </label>
+      <div class="row-setting">
+        <span>
+          <strong>지금 모두 지우기</strong>
+          <span class="muted block">구독 목록·차단 목록·키워드를 이 PC에서 즉시 삭제합니다.</span>
+        </span>
+        <button id="wipe" class="btn danger">모두 지우기</button>
+      </div>
+      <p class="muted small">모든 정보는 이 PC의 브라우저 안에만 저장되며 외부로 전송되지 않습니다.</p>
+    </section>
+  </main>
+  <script type="module" src="options.js"></script>
+</body>
+</html>
