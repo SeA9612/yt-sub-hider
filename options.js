@@ -3,6 +3,14 @@ import { loadData, saveData, getAutoClear, setAutoClear, clearAll } from './stor
 const $ = (s) => document.querySelector(s);
 let data;
 
+// 변경 사항은 누르는 즉시 저장된다. 저장 순서를 보장하고, 닫기 전에 끝날 때까지 기다리기 위한 체인.
+let saving = Promise.resolve();
+function persist() {
+  const snapshot = structuredClone(data);
+  saving = saving.then(() => saveData(snapshot)).catch((e) => console.error(e));
+  return saving;
+}
+
 // ───────── 상태 표시 ─────────
 function setStatus(msg, kind = 'info') {
   const el = $('#status');
@@ -92,7 +100,7 @@ function renderKeywords() {
     x.title = '삭제';
     x.addEventListener('click', async () => {
       data.keywords = data.keywords.filter((k) => k !== kw);
-      await saveData(data);
+      await persist();
       renderKeywords();
     });
     chip.append(x);
@@ -108,20 +116,20 @@ const pick = (c) => ({ id: c.id, title: c.title, handle: c.handle || '' });
 async function toggle(ch, block) {
   if (block) data.blocked[ch.id] = pick(ch);
   else delete data.blocked[ch.id];
-  await saveData(data);
+  await persist();
   renderList();
 }
 
 async function blockAll() {
   if (!confirm(`구독 채널 ${data.subs.length}개를 모두 숨길까요?`)) return;
   for (const s of data.subs) data.blocked[s.id] = pick(s);
-  await saveData(data);
+  await persist();
   renderList();
 }
 
 async function unblockAll() {
   data.blocked = {};
-  await saveData(data);
+  await persist();
   renderList();
 }
 
@@ -168,7 +176,7 @@ async function refreshSubs() {
     data.subs = subs;
     data.subsFetchedAt = Date.now();
     for (const s of subs) if (data.blocked[s.id]) data.blocked[s.id] = pick(s);
-    await saveData(data);
+    await persist();
     setStatus(
       partial
         ? `구독 채널 ${subs.length}개를 불러왔습니다. (일부만 불러왔을 수 있습니다 — 다시 시도해 보세요)`
@@ -183,6 +191,60 @@ async function refreshSubs() {
   }
 }
 
+// ───────── 업데이트 확인 ─────────
+// GitHub의 manifest.json에서 버전 번호만 읽어 온다 (아무 정보도 보내지 않음)
+const REPO_URL = 'https://github.com/SeA9612/yt-sub-hider';
+const LATEST_MANIFEST = 'https://raw.githubusercontent.com/SeA9612/yt-sub-hider/main/manifest.json';
+
+function compareVersions(a, b) {
+  const pa = a.split('.').map(Number);
+  const pb = b.split('.').map(Number);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const d = (pa[i] || 0) - (pb[i] || 0);
+    if (d) return d;
+  }
+  return 0;
+}
+
+async function checkUpdate() {
+  const current = chrome.runtime.getManifest().version;
+  const btn = $('#checkUpdate');
+  const banner = $('#updBanner');
+  $('#verInfo').textContent = `현재 버전 ${current}`;
+  btn.disabled = true;
+  $('#updTitle').textContent = '업데이트 확인 중…';
+  $('#updDesc').textContent = '';
+  try {
+    const res = await fetch(`${LATEST_MANIFEST}?t=${Date.now()}`, { cache: 'no-store' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const latest = (await res.json()).version;
+    if (compareVersions(latest, current) > 0) {
+      $('#updTitle').textContent = `새 버전 ${latest}이(가) 있습니다`;
+      $('#updDesc').textContent = '설치 폴더의 update.bat을 실행한 뒤 아래 “다시 불러오기”를 누르세요.';
+      banner.replaceChildren(
+        `새 버전 ${latest}이(가) 있습니다 (현재 ${current}). 설치 폴더의 update.bat을 실행한 뒤, 맨 아래 “다시 불러오기”를 누르세요. `,
+        Object.assign(document.createElement('a'), { href: REPO_URL, target: '_blank', textContent: '변경 내용 보기' }),
+      );
+      banner.hidden = false;
+    } else {
+      $('#updTitle').textContent = '최신 버전입니다';
+      banner.hidden = true;
+    }
+  } catch (e) {
+    $('#updTitle').textContent = '업데이트를 확인하지 못했습니다';
+    $('#updDesc').textContent = `인터넷 연결을 확인해 주세요. (${e.message})`;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function reloadExtension() {
+  const autoClear = await getAutoClear();
+  if (autoClear && !confirm('“크롬을 닫으면 자동 삭제”가 켜져 있어 숨김 목록이 초기화됩니다. 다시 불러올까요?')) return;
+  await saving;
+  chrome.runtime.reload(); // 확장 프로그램 전체를 다시 불러온다 (이 설정창도 닫힘)
+}
+
 // ───────── 초기화 ─────────
 async function init() {
   data = await loadData();
@@ -191,6 +253,12 @@ async function init() {
 
   $('#search').addEventListener('input', renderList);
   $('#refresh').addEventListener('click', refreshSubs);
+  $('#saveClose').addEventListener('click', async () => {
+    await saving;                       // 저장이 끝난 뒤
+    const tab = await chrome.tabs.getCurrent();
+    if (tab?.id != null) chrome.tabs.remove(tab.id); // 설정창 탭만 닫는다
+    else window.close();
+  });
   $('#blockAll').addEventListener('click', blockAll);
   $('#unblockAll').addEventListener('click', unblockAll);
 
@@ -200,13 +268,19 @@ async function init() {
     const kw = input.value.trim();
     if (kw && !data.keywords.some((k) => k.toLowerCase() === kw.toLowerCase())) {
       data.keywords.push(kw);
-      await saveData(data);
+      await persist();
       renderKeywords();
     }
     input.value = '';
   });
 
+  $('#checkUpdate').addEventListener('click', checkUpdate);
+  $('#reloadExt').addEventListener('click', reloadExtension);
+  $('#reloadWarn').hidden = !$('#autoClear').checked;
+  checkUpdate();
+
   $('#autoClear').addEventListener('change', async (e) => {
+    $('#reloadWarn').hidden = !e.target.checked;
     await setAutoClear(e.target.checked);
     setStatus(e.target.checked
       ? '크롬을 닫으면 목록이 자동으로 삭제됩니다.'

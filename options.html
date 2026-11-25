@@ -12,9 +12,13 @@
         <h1>구독 가리개</h1>
         <p class="sub">구독은 그대로 두고, 끈 채널의 영상을 유튜브 화면에서 숨깁니다.</p>
       </div>
-      <button id="refresh" class="btn">구독 목록 새로고침</button>
+      <div class="top-actions">
+        <button id="refresh" class="btn">구독 목록 새로고침</button>
+        <button id="saveClose" class="btn primary">설정 저장</button>
+      </div>
     </header>
 
+    <div id="updBanner" class="status update" hidden></div>
     <div id="status" class="status" hidden></div>
 
     <section class="card">
@@ -60,6 +64,28 @@
         <button id="wipe" class="btn danger">모두 지우기</button>
       </div>
       <p class="muted small">모든 정보는 이 PC의 브라우저 안에만 저장되며 외부로 전송되지 않습니다.</p>
+    </section>
+
+    <section class="card" id="updateCard">
+      <div class="section-head">
+        <h2>업데이트</h2>
+        <span id="verInfo" class="muted"></span>
+      </div>
+      <div class="row-setting">
+        <span>
+          <strong id="updTitle">업데이트 확인 중…</strong>
+          <span id="updDesc" class="muted block"></span>
+        </span>
+        <button id="checkUpdate" class="btn">업데이트 확인</button>
+      </div>
+      <div class="row-setting">
+        <span>
+          <strong>다시 불러오기</strong>
+          <span class="muted block">update.bat으로 파일을 덮어쓴 뒤 누르면 새 버전이 적용됩니다. (chrome://extensions의 ↻ 버튼과 같습니다)</span>
+          <span id="reloadWarn" class="muted block warn" hidden>“크롬을 닫으면 자동 삭제”가 켜져 있어 다시 불러오면 숨김 목록이 초기화됩니다.</span>
+        </span>
+        <button id="reloadExt" class="btn">다시 불러오기</button>
+      </div>
     </section>
   </main>
   <script type="module" src="options.js"></script>

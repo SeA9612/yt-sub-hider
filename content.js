@@ -221,7 +221,7 @@
     return parts.join(' ');
   }
 
-  async function browseContinuation(token, cfg) {
+  async function innertube(endpoint, body, cfg) {
     const headers = {
       'Content-Type': 'application/json',
       'X-Origin': location.origin,
@@ -232,41 +232,101 @@
     if (cfg.DELEGATED_SESSION_ID) headers['X-Goog-PageId'] = cfg.DELEGATED_SESSION_ID;
     const auth = await authHeader();
     if (auth) headers.Authorization = auth;
-    const res = await fetch('/youtubei/v1/browse?prettyPrint=false', {
+    const res = await fetch(`${location.origin}/youtubei/v1/${endpoint}?prettyPrint=false`, {
       method: 'POST',
       credentials: 'include',
       headers,
-      body: JSON.stringify({ context: cfg.INNERTUBE_CONTEXT, continuation: token }),
+      body: JSON.stringify({ context: cfg.INNERTUBE_CONTEXT, ...body }),
     });
-    if (!res.ok) throw new Error(`구독 목록 다음 페이지를 불러오지 못했습니다 (HTTP ${res.status})`);
+    if (!res.ok) throw new Error(`유튜브 응답 오류 (${endpoint}, HTTP ${res.status})`);
     return res.json();
   }
 
+  // 왼쪽 사이드바(가이드)의 "구독" 섹션에서 채널 읽기 — 구독 페이지 형식이 바뀌었을 때의 대안
+  function collectFromGuide(root, map) {
+    walk(root, (n) => {
+      if (!n.guideSubscriptionsSectionRenderer) return;
+      walk(n.guideSubscriptionsSectionRenderer, (m) => {
+        const e = m.guideEntryRenderer;
+        const be = e?.navigationEndpoint?.browseEndpoint;
+        const id = be?.browseId;
+        if (!id || !/^UC[\w-]{22}$/.test(id) || map.has(id)) return;
+        const base = be.canonicalBaseUrl || '';
+        const thumbs = e.thumbnail?.thumbnails || [];
+        let thumb = thumbs[thumbs.length - 1]?.url || '';
+        if (thumb.startsWith('//')) thumb = 'https:' + thumb;
+        const handle = base.startsWith('/@') ? safeDecode(base.slice(1)) : '';
+        map.set(id, {
+          id,
+          title: textOf(e.formattedTitle) || e.accessibility?.accessibilityData?.label || handle || id,
+          handle,
+          thumb,
+        });
+      });
+    });
+  }
+
+  // 진단용: 응답에 들어 있는 화면 부품 이름만 모은다 (채널 이름 등 내용은 담지 않음)
+  function structureSummary(root) {
+    const counts = new Map();
+    walk(root, (n) => {
+      for (const k of Object.keys(n)) {
+        if (/(Renderer|ViewModel)$/.test(k)) counts.set(k, (counts.get(k) || 0) + 1);
+      }
+    });
+    return [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 12)
+      .map(([k, v]) => `${k}×${v}`).join(', ');
+  }
+
   async function fetchSubscriptions() {
-    const res = await fetch('/feed/channels', { credentials: 'include' });
+    const res = await fetch(`${location.origin}/feed/channels`, { credentials: 'include' });
     if (!res.ok) throw new Error(`구독 페이지를 열지 못했습니다 (HTTP ${res.status})`);
     const html = await res.text();
     const cfg = extractYtcfg(html);
     if (cfg.LOGGED_IN === false) throw new Error('유튜브에 로그인되어 있지 않습니다. 먼저 로그인해 주세요.');
     const data = extractInitialData(html);
-    if (!data) throw new Error('구독 페이지 구조를 읽지 못했습니다. (유튜브 구조 변경 가능성)');
 
     const map = new Map();
-    collectChannels(data, map);
-    let token = findContinuation(data);
     let partial = false;
-    for (let guard = 0; token && guard < 200; guard++) {
-      try {
-        const page = await browseContinuation(token, cfg);
-        const before = map.size;
-        collectChannels(page, map);
-        token = findContinuation(page);
-        if (map.size === before) break;
-      } catch (e) {
-        partial = true;
-        console.warn('[구독 가리개]', e);
-        break;
+    const diag = [];
+
+    // 방법 1) 구독 채널 페이지 (/feed/channels)
+    if (data) {
+      collectChannels(data, map);
+      let token = findContinuation(data);
+      for (let guard = 0; token && guard < 200; guard++) {
+        try {
+          const page = await innertube('browse', { continuation: token }, cfg);
+          const before = map.size;
+          collectChannels(page, map);
+          token = findContinuation(page);
+          if (map.size === before) break;
+        } catch (e) {
+          partial = true;
+          console.warn('[구독 가리개]', e);
+          break;
+        }
       }
+      if (!map.size) diag.push(`구독 페이지: ${structureSummary(data) || '내용 없음'}`);
+    } else {
+      diag.push('구독 페이지: ytInitialData 없음');
+    }
+
+    // 방법 2) 사이드바 구독 목록 (/youtubei/v1/guide)
+    if (!map.size) {
+      try {
+        const guide = await innertube('guide', {}, cfg);
+        collectFromGuide(guide, map);
+        partial = false;
+        if (!map.size) diag.push(`사이드바: ${structureSummary(guide) || '내용 없음'}`);
+      } catch (e) {
+        diag.push(`사이드바: ${e.message}`);
+      }
+    }
+
+    if (!map.size) {
+      const who = cfg.LOGGED_IN === true ? '로그인 확인됨' : `로그인 상태 불명(${cfg.LOGGED_IN})`;
+      throw new Error(`구독 채널을 찾지 못했습니다. [진단] ${who} / ${diag.join(' / ')}`);
     }
     return { subs: [...map.values()], partial };
   }

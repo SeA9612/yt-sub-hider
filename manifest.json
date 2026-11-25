@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "구독 가리개",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "구독은 그대로 두고, 선택한 채널의 영상을 유튜브 화면에서 숨깁니다.",
   "permissions": ["storage"],
   "host_permissions": ["https://www.youtube.com/*"],
